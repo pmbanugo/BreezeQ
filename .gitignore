@@ -1,0 +1,6 @@
+.DS_Store
+node_modules
+dist
+
+specification_and_protocol/*
+majordomo-example/*

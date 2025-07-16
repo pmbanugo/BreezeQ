@@ -1,0 +1,17 @@
+{
+  "name": "background-worker",
+  "type": "module",
+  "dependencies": {
+    "zeromq": "6.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.14",
+    "npm-run-all2": "8.0.4",
+    "tsx": "4.20.3",
+    "typescript": "^5.8.3"
+  },
+  "scripts": {
+    "dev": "node --import=tsx ./src/index.ts",
+    "dev:watch": "tsx watch ./src/index.ts"
+  }
+}
