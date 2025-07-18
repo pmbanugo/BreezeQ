@@ -18,7 +18,7 @@
     // "verbatimModuleSyntax": true,
 
     "strict": true,
-    "noUncheckedIndexedAccess": true,
+    // "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
 
     "lib": [

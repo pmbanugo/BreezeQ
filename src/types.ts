@@ -113,6 +113,19 @@ export interface WorkerInfo {
   is_ready: boolean;
 }
 
+// Batch update operation for PersistenceBase
+export interface BatchUpdateOperation {
+  uuid: string;
+  data: Partial<Job>;
+}
+
+// Result of batch update/delete operation in PersistenceBase
+export interface BatchOperationResult {
+  successful: number;
+  failed: number;
+  errors?: string[];
+}
+
 // Persistence Layer Interface
 export interface PersistenceBase {
   add(job: Omit<Job, "uuid" | "created_at" | "updated_at">): Promise<string>;
@@ -120,6 +133,10 @@ export interface PersistenceBase {
   update(uuid: string, data: Partial<Job>): Promise<void>;
   getQueuedJobs(job_type: string): Promise<Job[]>;
   getProcessingJobs(): Promise<Job[]>;
+
+  // Batch operations
+  updateMany(operations: BatchUpdateOperation[]): Promise<BatchOperationResult>;
+  deleteMany(uuids: string[]): Promise<BatchOperationResult>;
 }
 
 // Broker state
