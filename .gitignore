@@ -2,5 +2,6 @@
 node_modules
 dist
 
+.vscode/
 specification_and_protocol/*
-majordomo-example/*
+simple-send-queue-example/*

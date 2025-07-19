@@ -7,6 +7,8 @@ import {
   BrokerConfig,
   PersistenceBase,
   BatchUpdateOperation,
+  Job,
+  JobOptions,
 } from "./types.js";
 
 export class JQPBroker {
@@ -139,8 +141,10 @@ export class JQPBroker {
         break;
 
       case JQP_WORKER_COMMANDS.JOB_REQUEST[0]:
-        // TODO: Implement job request handling
-        console.warn("Job request handling not implemented yet in broker");
+        console.error(
+          `Invalid JOB_REQUEST from worker ${workerId}: Workers should not send JOB_REQUEST`
+        );
+        await this.sendDisconnect(workerId);
         break;
 
       case JQP_WORKER_COMMANDS.JOB_REPLY[0]:
@@ -192,6 +196,9 @@ export class JQPBroker {
       : this.state.ready_workers.set(jobType, [workerId]);
 
     console.log(`Worker ${workerId} registered for job type: ${jobType}`);
+
+    // Try to dispatch pending jobs for this job type
+    await this.dispatchJobsForType(jobType);
   }
 
   private async handleDisconnect(workerId: string): Promise<void> {
@@ -226,15 +233,24 @@ export class JQPBroker {
       updated_at: new Date(),
     });
 
+    console.log(
+      `Job ${job_uuid} completed by worker ${workerId} with status ${statusCode}`
+    );
+
     // Mark worker as ready again
     const worker = this.state.workers.get(workerId);
     if (worker) {
       worker.is_ready = true;
-    }
 
-    console.log(
-      `Job ${job_uuid} completed by worker ${workerId} with status ${statusCode}`
-    );
+      // Add worker back to ready workers for its job type
+      const readyWorkers = this.state.ready_workers.get(worker.job_type);
+      if (!readyWorkers?.includes(workerId)) {
+        readyWorkers!.push(workerId);
+      }
+
+      // Try to dispatch more jobs for this job type
+      await this.dispatchJobsForType(worker.job_type);
+    }
   }
 
   private updateWorkerHeartbeat(workerId: string): void {
@@ -416,6 +432,141 @@ export class JQPBroker {
         );
       }
     }
+  }
+
+  /**
+   * Dispatch pending jobs for a specific job type
+   */
+  private async dispatchJobsForType(jobType: string): Promise<void> {
+    const readyWorkers = this.state.ready_workers.get(jobType);
+    if (!readyWorkers || readyWorkers.length === 0) {
+      return;
+    }
+
+    // Get queued jobs for this job type
+    const queuedJobs = await this.persistence.getQueuedJobs(jobType);
+    if (queuedJobs.length === 0) {
+      return;
+    }
+
+    // Dispatch jobs to available workers
+    const maxJobs = Math.min(readyWorkers.length, queuedJobs.length);
+
+    for (let i = 0; i < maxJobs; i++) {
+      const workerId = readyWorkers[i];
+      const worker = this.state.workers.get(workerId);
+
+      if (worker && worker.is_ready) {
+        await this.dispatchJobToWorker(workerId, queuedJobs[i]);
+      }
+    }
+  }
+
+  /**
+   * Dispatch a specific job to a specific worker
+   */
+  private async dispatchJobToWorker(workerId: string, job: Job): Promise<void> {
+    const worker = this.state.workers.get(workerId);
+    if (!worker || !worker.is_ready) {
+      return;
+    }
+
+    try {
+      // Update job status to processing
+      const updatePromise = this.persistence.update(job.uuid, {
+        status: "processing",
+        updated_at: new Date(),
+      });
+
+      // Add to processing jobs tracking
+      this.state.processingJobs.set(job.uuid, {
+        worker_id: workerId,
+        dispatch_timestamp: new Date(),
+      });
+
+      // Mark worker as busy
+      worker.is_ready = false;
+
+      // Remove worker from ready workers list
+      const readyWorkers = this.state.ready_workers.get(worker.job_type);
+      if (readyWorkers) {
+        const index = readyWorkers.indexOf(workerId);
+        if (index > -1) {
+          readyWorkers.splice(index, 1);
+        }
+      }
+
+      // Send JOB_REQUEST to worker
+      const optionsJson = JSON.stringify({
+        retries: job.retries_left || 0,
+        priority: job.options.priority || 0,
+        timeout: job.options.timeout || this.config.default_job_timeout,
+      });
+
+      await updatePromise;
+      await this.backendSocket.send([
+        Buffer.from(workerId, "hex"),
+        Buffer.alloc(0),
+        JQP_WORKER_PROTOCOL,
+        JQP_WORKER_COMMANDS.JOB_REQUEST,
+        job.uuid,
+        optionsJson,
+        job.payload,
+      ]);
+
+      console.log(`Dispatched job ${job.uuid} to worker ${workerId}`);
+    } catch (error) {
+      console.error(
+        `Failed to dispatch job ${job.uuid} to worker ${workerId}:`,
+        error
+      );
+
+      // Rollback: Mark job as queued again and worker as ready
+      try {
+        await this.persistence.update(job.uuid, {
+          status: "queued",
+          updated_at: new Date(),
+        });
+      } catch (rollbackError) {
+        console.error(`Failed to rollback job ${job.uuid}:`, rollbackError);
+      }
+
+      this.state.processingJobs.delete(job.uuid);
+      worker.is_ready = true;
+
+      // Add worker back to ready workers
+      const readyWorkers = this.state.ready_workers.get(worker.job_type);
+      if (readyWorkers && !readyWorkers.includes(workerId)) {
+        readyWorkers.push(workerId);
+      }
+    }
+  }
+
+  /**
+   * Add a job to the broker for processing
+   */
+  async addJob(
+    jobType: string,
+    payload: string,
+    options: JobOptions = {}
+  ): Promise<string> {
+    const job_uuid = await this.persistence.add({
+      job_type: jobType,
+      payload,
+      options: {
+        retries: options.retries || this.config.default_retry_count,
+        priority: options.priority || 0,
+        timeout: options.timeout || this.config.default_job_timeout,
+      },
+      status: "queued",
+    });
+
+    console.log(`Added job ${job_uuid} of type ${jobType}`);
+
+    // Try to dispatch the job immediately
+    await this.dispatchJobsForType(jobType);
+
+    return job_uuid;
   }
 
   /**

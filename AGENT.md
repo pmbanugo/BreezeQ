@@ -10,11 +10,10 @@
 ## Architecture
 
 - Uses Node.js version 24 and targets ES2024
-- **ZeroMQ**: Uses `zeromq` library for ZeroMQ messaging
+- **ZeroMQ**: Uses `zeromq` library for ZeroMQ messaging. If you need more `zeromq` library type information, You can look at the github repository at [the url](https://github.com/zeromq/zeromq.js) or the documentation at the [website url](https://zeromq.github.io/zeromq.js/).
 - **Protocol**: implementing a job queue system based on a custom zeromq protocol which evolved from Majordomo protocol (MDP). See my JQP protocol specification in the file specification-rfc/ZeroMQ-based-Job-Queue-System-Protocol.md.
 - **Examples**: `src/examples/` contains various examples of how to use the program either as a client or a worker, or all together verifying the full system by simple integration samples.
 - **Tests**: when needed, tests files should be placed beside the implementation files, following the same directory structure. use `node:test` and Node.js test runner.
-- **Note**: Currently incomplete - some implementation files missing from src/
 
 ## Code Style
 
@@ -24,3 +23,10 @@
 - **Naming**: PascalCase for enums/types, camelCase for variables, and snake_case for file names
 - **No JavaScript Classes**: Prefer functional programming style, avoid classes
 - **Tests**: Use `node:test` for testing, no external test libraries. More info about node:test can be found in the [Node.js documentation](https://nodejs.org/api/test.html).
+
+### TypeScript Performance Considerations
+
+- Use `const` assertions and `readonly` modifiers where they can help V8 optimize
+- Use type guards efficiently to avoid runtime type checking overhead
+- Consider using `Buffer.allocUnsafe()` when safety can be guaranteed.
+- Implement proper TypeScript types/interfaces for message structures to enable better V8 optimization
