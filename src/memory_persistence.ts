@@ -11,11 +11,16 @@ export class MemoryPersistence implements PersistenceBase {
   private jobs: Map<string, Job> = new Map();
   private generateId = hyperid();
 
-  async add(
-    job: Omit<Job, "uuid" | "created_at" | "updated_at">
-  ): Promise<string> {
-    const uuid = this.generateId();
+  async add(job: Omit<Job, "created_at" | "updated_at">): Promise<string> {
     const now = new Date();
+
+    // If UUID is provided, use it (for client-generated UUIDs with idempotency)
+    const uuid = job.uuid || this.generateId();
+
+    // Check if job with this UUID already exists (idempotency)
+    if (this.jobs.has(uuid)) {
+      return uuid;
+    }
 
     const newJob: Job = {
       ...job,

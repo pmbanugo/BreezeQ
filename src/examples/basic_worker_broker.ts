@@ -1,5 +1,6 @@
 import { JQPBroker } from "../broker.js";
 import { MemoryPersistence } from "../memory_persistence.js";
+import { JQPClient } from "../client.js";
 import { MathWorker } from "./math_worker.js";
 import { BrokerConfig } from "../types.js";
 
@@ -41,15 +42,18 @@ async function main() {
       `✅ Broker state: ${state.workers.size} workers, ${state.ready_workers.size} job types`
     );
 
-    // Add a simple job
-    console.log("📝 Adding job...");
-    const jobUuid = await broker.addJob(
-      "math.calculate",
-      JSON.stringify({
+    // Create client and add a simple job
+    console.log("📝 Adding job via client...");
+    const client = new JQPClient(`tcp://localhost:${config.frontend_port}`);
+    await client.connect();
+
+    const jobUuid = await client.enqueueJob({
+      job_type: "math.calculate",
+      payload: JSON.stringify({
         operation: "add",
         numbers: [10, 20, 30],
-      })
-    );
+      }),
+    });
 
     console.log(`📋 Job ${jobUuid} submitted`);
 
@@ -75,6 +79,7 @@ async function main() {
     }
 
     // Cleanup
+    await client.disconnect();
     await worker.stop();
     await broker.stop();
 

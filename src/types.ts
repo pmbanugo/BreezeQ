@@ -47,6 +47,7 @@ export interface Job {
 export interface EnqueueRequest {
   protocol: typeof JQP_CLIENT_PROTOCOL;
   command: typeof JQP_CLIENT_COMMANDS.ENQUEUE;
+  job_uuid: string;
   job_type: string;
   job_payload: string;
   options: JobOptions;
@@ -55,7 +56,7 @@ export interface EnqueueRequest {
 export interface EnqueueReply {
   protocol: typeof JQP_CLIENT_PROTOCOL;
   command: typeof JQP_CLIENT_COMMANDS.ENQUEUE_REPLY;
-  status_code: number;
+  status_code: number; //TODO: use a type that represent the valid status codes for such reply. They could also be represented as Buffer, to reduce converting between types.
   job_uuid: string;
 }
 
@@ -128,7 +129,7 @@ export interface BatchOperationResult {
 
 // Persistence Layer Interface
 export interface PersistenceBase {
-  add(job: Omit<Job, "uuid" | "created_at" | "updated_at">): Promise<string>;
+  add(job: Omit<Job, "created_at" | "updated_at">): Promise<string>;
   get(uuid: string): Promise<Job | null>;
   update(uuid: string, data: Partial<Job>): Promise<void>;
   getQueuedJobs(job_type: string): Promise<Job[]>;

@@ -1,5 +1,6 @@
 import { JQPBroker } from "../broker.js";
 import { MemoryPersistence } from "../memory_persistence.js";
+import { JQPClient } from "../client.js";
 import { MathWorker } from "./math_worker.js";
 import { BrokerConfig } from "../types.js";
 
@@ -29,7 +30,7 @@ async function main() {
   await broker.start();
 
   // Wait a moment for broker to start
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  await new Promise((resolve) => setTimeout(resolve, 1000));
 
   // Create and start workers
   console.log("👷 Starting workers...");
@@ -45,44 +46,51 @@ async function main() {
   }
 
   // Wait for workers to register
-  await new Promise(resolve => setTimeout(resolve, 2000));
+  await new Promise((resolve) => setTimeout(resolve, 2000));
 
-  console.log("🎯 Adding jobs to broker...");
+  // Create client
+  const client = new JQPClient(`tcp://localhost:${config.frontend_port}`);
+  await client.connect();
+
+  console.log("🎯 Adding jobs via client...");
 
   // Add various types of jobs
   const jobs = [
     {
       type: "math.calculate",
       payload: JSON.stringify({ operation: "add", numbers: [1, 2, 3, 4, 5] }),
-      description: "Addition of numbers 1-5"
+      description: "Addition of numbers 1-5",
     },
     {
-      type: "math.calculate", 
+      type: "math.calculate",
       payload: JSON.stringify({ operation: "multiply", numbers: [2, 3, 4] }),
-      description: "Multiplication of 2, 3, 4"
+      description: "Multiplication of 2, 3, 4",
     },
     {
       type: "math.calculate",
       payload: JSON.stringify({ operation: "divide", numbers: [100, 5, 2] }),
-      description: "Division: 100 ÷ 5 ÷ 2"
+      description: "Division: 100 ÷ 5 ÷ 2",
     },
     {
       type: "math.calculate",
       payload: JSON.stringify({ operation: "slow_add", numbers: [10, 20] }),
-      description: "Slow addition (simulates long-running job)"
+      description: "Slow addition (simulates long-running job)",
     },
     {
       type: "math.calculate",
       payload: JSON.stringify({ operation: "subtract", numbers: [100, 30, 5] }),
-      description: "Subtraction: 100 - 30 - 5"
-    }
+      description: "Subtraction: 100 - 30 - 5",
+    },
   ];
 
   // Submit jobs
   const jobUuids = [];
   for (const job of jobs) {
     console.log(`📝 Adding job: ${job.description}`);
-    const uuid = await broker.addJob(job.type, job.payload);
+    const uuid = await client.enqueueJob({
+      job_type: job.type,
+      payload: job.payload,
+    });
     jobUuids.push({ uuid, description: job.description });
   }
 
@@ -94,17 +102,19 @@ async function main() {
   const startTime = Date.now();
 
   while (completedJobs < totalJobs) {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
     // Check completed jobs
     const allJobs = await persistence.getAllJobs();
-    const completed = allJobs.filter(job => job.status === "completed" || job.status === "failed");
-    
+    const completed = allJobs.filter(
+      (job) => job.status === "completed" || job.status === "failed"
+    );
+
     if (completed.length > completedJobs) {
       const newCompletions = completed.slice(completedJobs);
-      
+
       for (const job of newCompletions) {
-        const jobInfo = jobUuids.find(j => j.uuid === job.uuid);
+        const jobInfo = jobUuids.find((j) => j.uuid === job.uuid);
         if (job.status === "completed") {
           console.log(`✅ Job completed: ${jobInfo?.description || job.uuid}`);
           console.log(`   Result: ${job.result}`);
@@ -113,13 +123,15 @@ async function main() {
           console.log(`   Error: ${job.result}`);
         }
       }
-      
+
       completedJobs = completed.length;
     }
 
     // Show broker state
     const state = broker.getState();
-    console.log(`📊 Status: ${completedJobs}/${totalJobs} completed, ${state.processingJobs.size} processing, ${state.workers.size} workers connected`);
+    console.log(
+      `📊 Status: ${completedJobs}/${totalJobs} completed, ${state.processingJobs.size} processing, ${state.workers.size} workers connected`
+    );
   }
 
   const endTime = Date.now();
@@ -128,13 +140,16 @@ async function main() {
   // Test job failure scenario
   console.log("\n🧪 Testing job failure scenario...");
   try {
-    const failureJobUuid = await broker.addJob("math.calculate", JSON.stringify({ 
-      operation: "divide", 
-      numbers: [10, 0] // Division by zero
-    }));
-    
+    const failureJobUuid = await client.enqueueJob({
+      job_type: "math.calculate",
+      payload: JSON.stringify({
+        operation: "divide",
+        numbers: [10, 0], // Division by zero
+      }),
+    });
+
     // Wait for failure
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
     const failedJob = await persistence.get(failureJobUuid);
     if (failedJob?.status === "failed") {
       console.log(`❌ Job failed as expected: ${failedJob.result}`);
@@ -146,9 +161,14 @@ async function main() {
   // Test invalid job type
   console.log("\n🧪 Testing invalid job type...");
   try {
-    await broker.addJob("invalid.job.type", JSON.stringify({ data: "test" }));
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    console.log("⚠️  Invalid job type added but no workers available to process");
+    await client.enqueueJob({
+      job_type: "invalid.job.type",
+      payload: JSON.stringify({ data: "test" }),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    console.log(
+      "⚠️  Invalid job type added but no workers available to process"
+    );
   } catch (error) {
     console.log(`❌ Invalid job type test: ${error}`);
   }
@@ -160,20 +180,22 @@ async function main() {
     acc[job.status] = (acc[job.status] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
-  
+
   for (const [status, count] of Object.entries(byStatus)) {
     console.log(`   ${status}: ${count}`);
   }
 
   // Cleanup
   console.log("\n🧹 Cleaning up...");
-  
+
+  await client.disconnect();
+
   for (const worker of workers) {
     await worker.stop();
   }
-  
+
   await broker.stop();
-  
+
   console.log("✨ Demo completed successfully!");
 }
 

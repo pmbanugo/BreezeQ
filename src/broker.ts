@@ -2,6 +2,8 @@ import { Router } from "zeromq";
 import {
   JQP_WORKER_PROTOCOL,
   JQP_WORKER_COMMANDS,
+  JQP_CLIENT_PROTOCOL,
+  JQP_CLIENT_COMMANDS,
   WorkerInfo,
   BrokerState,
   BrokerConfig,
@@ -12,6 +14,7 @@ import {
 } from "./types.js";
 
 export class JQPBroker {
+  private frontendSocket: Router;
   private backendSocket: Router;
   private state: BrokerState;
   private config: BrokerConfig;
@@ -23,6 +26,7 @@ export class JQPBroker {
   constructor(config: BrokerConfig, persistence: PersistenceBase) {
     this.config = config;
     this.persistence = persistence;
+    this.frontendSocket = new Router();
     this.backendSocket = new Router();
     this.state = {
       workers: new Map(),
@@ -32,12 +36,12 @@ export class JQPBroker {
   }
 
   async start(): Promise<void> {
-    console.log(`Starting JQP broker on port ${this.config.backend_port}`);
+    console.log(
+      `Starting JQP broker on frontend port ${this.config.frontend_port}, backend port ${this.config.backend_port}`
+    );
 
-    // Check if socket is already closed - this indicates improper usage
-    if (this.backendSocket.closed) {
-      // TODO: instead of the user instantiating a new instance, maybe have a restart method that will setup a new Dealer/Router instance that we can bind to and reuse the current object's data/state?
-      // But for now, we will just throw an error because it is a misuse of the API. Stopping the broker means something terribly wrong happened, and the user should be aware of it.
+    // Check if sockets are already closed - this indicates improper usage
+    if (this.frontendSocket.closed || this.backendSocket.closed) {
       throw new Error(
         "Cannot start broker: socket is closed. Create a new broker instance instead of reusing a stopped one."
       );
@@ -49,14 +53,18 @@ export class JQPBroker {
     // Bind backend socket for workers
     await this.backendSocket.bind(`tcp://*:${this.config.backend_port}`); // TODO: don't limit to TCP, allow other sockets transports like IPC, etc.
 
+    // Bind frontend socket for clients
+    await this.frontendSocket.bind(`tcp://*:${this.config.frontend_port}`);
+
     this.running = true;
 
     // Start heartbeat and timeout checks
     this.startHeartbeatTimer();
     this.startJobTimeoutTimer();
 
-    // Main message loop
-    this.messageLoop();
+    // Main message loops
+    this.backendMessageLoop();
+    this.frontendMessageLoop();
   }
 
   async stop(): Promise<void> {
@@ -76,12 +84,55 @@ export class JQPBroker {
       await this.sendDisconnect(workerId);
     }
 
+    if (!this.frontendSocket.closed) {
+      this.frontendSocket.close();
+    }
+
     if (!this.backendSocket.closed) {
       this.backendSocket.close();
     }
   }
 
-  private async messageLoop(): Promise<void> {
+  private async frontendMessageLoop(): Promise<void> {
+    try {
+      for await (const [sender, blank, protocol, command, ...rest] of this
+        .frontendSocket) {
+        if (!this.running) break;
+
+        // Validate message structure
+        if (!sender || !protocol || !command) {
+          console.error("Invalid frontend message structure");
+          continue;
+        }
+
+        const clientId = sender.toString("hex");
+        const protocolStr = protocol.toString();
+
+        // Validate protocol
+        if (protocolStr !== JQP_CLIENT_PROTOCOL) {
+          console.error(
+            `Invalid or unsupported protocol from client ${clientId}: ${protocolStr}`
+          );
+          continue;
+        }
+
+        // Handle client command
+        await this.handleClientCommand(
+          clientId,
+          command as Buffer,
+          rest as Buffer[]
+        );
+      }
+    } catch (error) {
+      console.error("Error in frontend message loop:", error);
+      if (this.running) {
+        // Restart message loop
+        setTimeout(() => this.frontendMessageLoop(), 1000);
+      }
+    }
+  }
+
+  private async backendMessageLoop(): Promise<void> {
     try {
       for await (const [sender, blank, protocol, command, ...rest] of this
         .backendSocket) {
@@ -89,8 +140,8 @@ export class JQPBroker {
 
         // Validate message structure
         if (!sender || !protocol || !command) {
-          console.error("Invalid message structure");
-          continue;
+          console.error("Invalid backend message structure");
+          continue; // TODO: I think based on the spec, we should disconnect the worker when it sends an invalid message.
         }
 
         const workerId = sender.toString("hex");
@@ -116,11 +167,155 @@ export class JQPBroker {
         );
       }
     } catch (error) {
-      console.error("Error in message loop:", error);
+      console.error("Error in backend message loop:", error);
       if (this.running) {
         // Restart message loop
-        setTimeout(() => this.messageLoop(), 1000);
+        setTimeout(() => this.backendMessageLoop(), 1000);
       }
+    }
+  }
+
+  private async handleClientCommand(
+    clientId: string,
+    command: Buffer,
+    args: Buffer[]
+  ): Promise<void> {
+    const commandCode = command[0];
+
+    switch (commandCode) {
+      case JQP_CLIENT_COMMANDS.ENQUEUE[0]:
+        await this.handleEnqueue(clientId, args);
+        break;
+
+      case JQP_CLIENT_COMMANDS.STATUS[0]:
+        await this.handleStatus(clientId, args);
+        break;
+
+      default:
+        console.error(
+          `Invalid command from client ${clientId}: ${commandCode}`
+        ); // TODO: I think the client should be dropped/disconnected based on the protocol spec.
+    }
+  }
+
+  private async handleEnqueue(clientId: string, args: Buffer[]): Promise<void> {
+    if (args.length < 4 || !args[0] || !args[1] || !args[2] || !args[3]) {
+      console.error(
+        `Invalid ENQUEUE from client ${clientId}: insufficient arguments`
+      );
+      // TODO: According to the spec, Shouldn't it disconnect client after they send invalid request?
+      return;
+    }
+
+    const job_uuid = args[0].toString();
+    const job_type = args[1].toString();
+    const job_payload = args[2].toString();
+    const optionsJson = args[3].toString();
+
+    let options: JobOptions;
+    try {
+      options = JSON.parse(optionsJson);
+    } catch (error) {
+      console.error(`Invalid options JSON from client ${clientId}:`, error);
+      await this.sendEnqueueReply(clientId, 400, job_uuid);
+      return;
+    }
+
+    try {
+      const result_uuid = await this.persistence.add({
+        uuid: job_uuid,
+        job_type,
+        payload: job_payload,
+        options: {
+          retries: options.retries || this.config.default_retry_count,
+          priority: options.priority || 0,
+          timeout: options.timeout || this.config.default_job_timeout,
+        },
+        status: "queued",
+        retries_left: options.retries || this.config.default_retry_count,
+      });
+
+      console.log(
+        `Accepted job ${job_uuid} of type ${job_type} from client ${clientId}`
+      );
+
+      // Send successful reply
+      await this.sendEnqueueReply(clientId, 202, result_uuid);
+
+      // Try to dispatch the job immediately
+      await this.dispatchJobsForType(job_type);
+    } catch (error) {
+      console.error(`Failed to add job ${job_uuid}:`, error);
+      await this.sendEnqueueReply(clientId, 500, job_uuid);
+    }
+  }
+
+  private async handleStatus(clientId: string, args: Buffer[]): Promise<void> {
+    if (!args[0]) {
+      console.error(
+        `Invalid STATUS command from client ${clientId}: missing job_uuid`
+      );
+      // TODO: should be disconnect client according to spec?
+      return;
+    }
+
+    const job_uuid = args[0].toString();
+
+    try {
+      const job = await this.persistence.get(job_uuid);
+      if (!job) {
+        await this.sendStatusReply(clientId, "failed", "Job not found");
+        return;
+      }
+
+      await this.sendStatusReply(clientId, job.status, job.result || "");
+    } catch (error) {
+      console.error(`Failed to get job status ${job_uuid}:`, error);
+      await this.sendStatusReply(clientId, "failed", "Internal error");
+    }
+  }
+
+  private async sendEnqueueReply(
+    clientId: string,
+    statusCode: number,
+    jobUuid: string
+  ): Promise<void> {
+    try {
+      await this.frontendSocket.send([
+        Buffer.from(clientId, "hex"),
+        Buffer.alloc(0),
+        JQP_CLIENT_PROTOCOL,
+        JQP_CLIENT_COMMANDS.ENQUEUE_REPLY,
+        statusCode.toString(),
+        jobUuid,
+      ]);
+    } catch (error) {
+      console.error(
+        `Failed to send ENQUEUE_REPLY to client ${clientId}:`,
+        error
+      );
+    }
+  }
+
+  private async sendStatusReply(
+    clientId: string,
+    jobStatus: string,
+    jobResult: string
+  ): Promise<void> {
+    try {
+      await this.frontendSocket.send([
+        Buffer.from(clientId, "hex"),
+        Buffer.alloc(0),
+        JQP_CLIENT_PROTOCOL,
+        JQP_CLIENT_COMMANDS.STATUS_REPLY,
+        jobStatus,
+        jobResult,
+      ]);
+    } catch (error) {
+      console.error(
+        `Failed to send STATUS_REPLY to client ${clientId}:`,
+        error
+      );
     }
   }
 
@@ -389,13 +584,18 @@ export class JQPBroker {
     for (const [job_uuid, info] of this.state.processingJobs) {
       const processingTime = now.getTime() - info.dispatch_timestamp.getTime();
 
-      if (processingTime > this.config.default_job_timeout) {
+      // Get the job to check its specific timeout
+      const job = await this.persistence.get(job_uuid);
+      const jobTimeout =
+        job?.options.timeout || this.config.default_job_timeout;
+
+      if (processingTime > jobTimeout) {
         console.log(
-          `Job ${job_uuid} timed out, removing worker ${info.worker_id}`
+          `Job ${job_uuid} timed out after ${processingTime}ms (timeout: ${jobTimeout}ms), removing worker ${info.worker_id}`
         );
 
         // TODO: Should it instead just handle the job (re-queue or send to poison pill queue), and not remove the worker? The heartbeat timers should handle the worker removal if it is considered dead.
-        // We will consider that for the next iteration of the protocol specification. It could be part of the spec or just implementation detail outside the spec.
+        // We will consider that for the next iteration of the protocol specification. It could be part of the spec or just implementation detail outside the spec. Hint: there's a high-level design which includes DLQ, therefore we need to factor it in the the protocol spec.
         // For now:
         // Remove worker and handle job
         await this.removeWorker(info.worker_id);
@@ -540,33 +740,6 @@ export class JQPBroker {
         readyWorkers.push(workerId);
       }
     }
-  }
-
-  /**
-   * Add a job to the broker for processing
-   */
-  async addJob(
-    jobType: string,
-    payload: string,
-    options: JobOptions = {}
-  ): Promise<string> {
-    const job_uuid = await this.persistence.add({
-      job_type: jobType,
-      payload,
-      options: {
-        retries: options.retries || this.config.default_retry_count,
-        priority: options.priority || 0,
-        timeout: options.timeout || this.config.default_job_timeout,
-      },
-      status: "queued",
-    });
-
-    console.log(`Added job ${job_uuid} of type ${jobType}`);
-
-    // Try to dispatch the job immediately
-    await this.dispatchJobsForType(jobType);
-
-    return job_uuid;
   }
 
   /**

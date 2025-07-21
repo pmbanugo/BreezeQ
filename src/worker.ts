@@ -54,9 +54,21 @@ export class JQPWorker {
       clearInterval(this.livenessTimer);
     }
 
-    // Send disconnect message
-    await this.sendDisconnect();
+    // Send disconnect message before closing
+    try {
+      await this.sendDisconnect();
+    } catch (error) {
+      // Ignore errors when sending disconnect during shutdown
+    }
 
+    // Disconnect from broker endpoint
+    try {
+      await this.socket.disconnect(this.brokerAddress);
+    } catch (error) {
+      // Ignore disconnect errors during shutdown
+    }
+
+    // Close the socket completely when stopping
     if (!this.socket.closed) {
       this.socket.close();
     }
@@ -97,12 +109,18 @@ export class JQPWorker {
       clearInterval(this.livenessTimer);
     }
 
-    if (!this.socket.closed) {
-      this.socket.close();
+    // Try to disconnect from broker endpoint first
+    try {
+      await this.socket.disconnect(this.brokerAddress);
+    } catch (error) {
+      // Ignore disconnect errors during reconnection
     }
 
-    // Create new socket and reconnect
-    this.socket = new Dealer();
+    // Only create new socket if current one is closed
+    if (this.socket.closed) {
+      this.socket = new Dealer();
+    }
+
     await this.connect();
   }
 

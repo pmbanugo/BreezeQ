@@ -12,10 +12,8 @@
     "typescript": "^5.8.3"
   },
   "scripts": {
-    "dev": "node --import=tsx ./src/index.ts",
-    "dev:watch": "tsx watch ./src/index.ts",
     "test": "node --import=tsx --test --test-concurrency=4 --test-timeout=10000 src/**/*.test.ts",
-    "test:unit": "node --import=tsx --test --test-concurrency=4 --test-timeout=10000 src/memory_persistence.test.ts src/broker.test.ts src/worker.test.ts",
+    "test:unit": "node --import=tsx --test --test-concurrency=4 --test-timeout=10000 src/memory_persistence.test.ts src/broker.test.ts src/worker.test.ts src/client.test.ts",
     "test:integration": "node --import=tsx --test --test-concurrency=2 --test-timeout=30000 src/heartbeat_integration.test.ts",
     "demo:basic_heartbeat": "node --import=tsx src/examples/basic_heartbeat_demo.ts",
     "demo:worker_failure": "node --import=tsx src/examples/worker_failure_demo.ts",
