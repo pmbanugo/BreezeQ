@@ -5,14 +5,25 @@ export const JQP_CLIENT_PROTOCOL = "JQPC01" as const;
 export const JQP_WORKER_PROTOCOL = "JQPW01" as const;
 
 // Command codes
-export const JQP_CLIENT_COMMANDS = {
+export const JQP_CLIENT_COMMANDS: {
+  readonly ENQUEUE: Buffer;
+  readonly ENQUEUE_REPLY: Buffer;
+  readonly STATUS: Buffer;
+  readonly STATUS_REPLY: Buffer;
+} = {
   ENQUEUE: Buffer.from([0x01]),
   ENQUEUE_REPLY: Buffer.from([0x02]),
   STATUS: Buffer.from([0x03]),
   STATUS_REPLY: Buffer.from([0x04]),
 } as const;
 
-export const JQP_WORKER_COMMANDS = {
+export const JQP_WORKER_COMMANDS: {
+  readonly READY: Buffer;
+  readonly HEARTBEAT: Buffer;
+  readonly DISCONNECT: Buffer;
+  readonly JOB_REQUEST: Buffer;
+  readonly JOB_REPLY: Buffer;
+} = {
   READY: Buffer.from([0x01]),
   HEARTBEAT: Buffer.from([0x02]),
   DISCONNECT: Buffer.from([0x03]),

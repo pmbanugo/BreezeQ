@@ -6,7 +6,7 @@ export { MemoryPersistence } from "./memory_persistence.js";
 export * from "./types.js";
 
 // Default configuration
-export const DEFAULT_CONFIG = {
+export const DEFAULT_BROKER_CONFIG = {
   frontend_port: 5550,
   backend_port: 5551,
   database_path: ":memory:",

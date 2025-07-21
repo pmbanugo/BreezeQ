@@ -1,5 +1,5 @@
 {
-  "name": "jerome",
+  "name": "@pmbanugo/breezeq",
   "type": "module",
   "dependencies": {
     "hyperid": "^3.3.0",
@@ -17,6 +17,7 @@
     "demo:basic_heartbeat": "node --import=tsx src/examples/basic_heartbeat_demo.ts",
     "demo:worker_failure": "node --import=tsx src/examples/worker_failure_demo.ts",
     "demo:multiple_workers": "node --import=tsx src/examples/multiple_workers_demo.ts",
-    "demo:broker_restart": "node --import=tsx src/examples/broker_restart_demo.ts"
+    "demo:broker_restart": "node --import=tsx src/examples/broker_restart_demo.ts",
+    "publish:dry_run": "pnpm dlx jsr publish --dry-run"
   }
 }
