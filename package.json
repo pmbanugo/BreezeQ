@@ -1,5 +1,5 @@
 {
-  "name": "background-worker",
+  "name": "jerome",
   "type": "module",
   "dependencies": {
     "hyperid": "^3.3.0",
@@ -7,7 +7,6 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.14",
-    "npm-run-all2": "8.0.4",
     "tsx": "4.20.3",
     "typescript": "^5.8.3"
   },
