@@ -128,6 +128,10 @@ async function main() {
 main().catch(console.error);
 ```
 
+This is what you'd get when you run the sample code:
+
+![QUick start sample's runtime log](https://cdn.hashnode.com/res/hashnode/image/upload/v1753184076387/92192192-024a-4809-9aaa-8f009887afe8.png)
+
 ## Architecture
 
 BreezeQ follows a broker-worker pattern with three main components:
