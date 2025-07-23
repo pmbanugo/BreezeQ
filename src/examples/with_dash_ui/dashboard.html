@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BreezeQ Job Queue Dashboard</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .metric-card {
+            transition: all 0.3s ease;
+        }
+        .metric-card:hover {
+            transform: translateY(-2px);
+        }
+        .pulse-animation {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        .status-ready { background-color: #10b981; }
+        .status-busy { background-color: #f59e0b; }
+        .status-queued { background-color: #6b7280; }
+        .status-processing { background-color: #3b82f6; }
+        .status-completed { background-color: #10b981; }
+        .status-failed { background-color: #ef4444; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">BreezeQ Dashboard</h1>
+            <p class="text-gray-600">Real-time job queue monitoring and statistics</p>
+            <div class="mt-4 flex items-center space-x-4">
+                <div class="flex items-center">
+                    <div id="connection-status" class="status-indicator status-ready"></div>
+                    <span class="text-sm text-gray-600">Connected</span>
+                </div>
+                <div class="text-sm text-gray-500" id="uptime">Uptime: --</div>
+                <div class="text-sm text-gray-500" id="last-update">Last update: --</div>
+            </div>
+        </div>
+
+        <!-- Main Stats Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <!-- Workers Card -->
+            <div class="metric-card bg-white rounded-lg shadow-md p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-700">Workers</h3>
+                    <div class="text-2xl">👥</div>
+                </div>
+                <div class="space-y-2">
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Total:</span>
+                        <span id="workers-total" class="font-semibold">0</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Ready:</span>
+                        <span id="workers-ready" class="font-semibold text-green-600">0</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Busy:</span>
+                        <span id="workers-busy" class="font-semibold text-yellow-600">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Jobs Card -->
+            <div class="metric-card bg-white rounded-lg shadow-md p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-700">Jobs</h3>
+                    <div class="text-2xl">📋</div>
+                </div>
+                <div class="space-y-2">
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Total:</span>
+                        <span id="jobs-total" class="font-semibold">0</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Queued:</span>
+                        <span id="jobs-queued" class="font-semibold text-gray-600">0</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Processing:</span>
+                        <span id="jobs-processing" class="font-semibold text-blue-600">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Completed Jobs Card -->
+            <div class="metric-card bg-white rounded-lg shadow-md p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-700">Completed</h3>
+                    <div class="text-2xl">✅</div>
+                </div>
+                <div class="space-y-2">
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Success:</span>
+                        <span id="jobs-completed" class="font-semibold text-green-600">0</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Failed:</span>
+                        <span id="jobs-failed" class="font-semibold text-red-600">0</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Success Rate:</span>
+                        <span id="success-rate" class="font-semibold">100%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Info Card -->
+            <div class="metric-card bg-white rounded-lg shadow-md p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-700">System</h3>
+                    <div class="text-2xl">⚡</div>
+                </div>
+                <div class="space-y-2">
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Status:</span>
+                        <span id="system-status" class="font-semibold text-green-600">Running</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Connected:</span>
+                        <span id="clients-connected" class="font-semibold">1</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Updates:</span>
+                        <span id="updates-count" class="font-semibold">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Worker Types and Recent Activity -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Worker Types -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">Workers by Type</h3>
+                <div id="worker-types" class="space-y-3">
+                    <div class="text-gray-500 text-center py-4">No workers connected</div>
+                </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">Recent Activity</h3>
+                <div id="activity-log" class="space-y-2 max-h-80 overflow-y-auto">
+                    <div class="text-gray-500 text-center py-4">No recent activity</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class DashboardApp {
+            constructor() {
+                this.ws = null;
+                this.reconnectAttempts = 0;
+                this.maxReconnectAttempts = 10;
+                this.updateCounter = 0;
+                this.activityLog = [];
+                this.maxActivityItems = 50;
+                
+                this.connect();
+                this.setupEventHandlers();
+            }
+
+            connect() {
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
+                
+                try {
+                    this.ws = new WebSocket(wsUrl);
+                    
+                    this.ws.onopen = () => {
+                        console.log('WebSocket connected');
+                        this.reconnectAttempts = 0;
+                        this.updateConnectionStatus(true);
+                    };
+                    
+                    this.ws.onmessage = (event) => {
+                        try {
+                            const message = JSON.parse(event.data);
+                            this.handleMessage(message);
+                        } catch (error) {
+                            console.error('Error parsing WebSocket message:', error);
+                        }
+                    };
+                    
+                    this.ws.onclose = () => {
+                        console.log('WebSocket disconnected');
+                        this.updateConnectionStatus(false);
+                        this.scheduleReconnect();
+                    };
+                    
+                    this.ws.onerror = (error) => {
+                        console.error('WebSocket error:', error);
+                        this.updateConnectionStatus(false);
+                    };
+                } catch (error) {
+                    console.error('Error connecting to WebSocket:', error);
+                    this.scheduleReconnect();
+                }
+            }
+
+            scheduleReconnect() {
+                if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+                    this.reconnectAttempts++;
+                    
+                    console.log(`Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts})`);
+                    setTimeout(() => this.connect(), delay);
+                }
+            }
+
+            updateConnectionStatus(connected) {
+                const statusEl = document.getElementById('connection-status');
+                const statusText = statusEl.nextElementSibling;
+                
+                if (connected) {
+                    statusEl.className = 'status-indicator status-ready';
+                    statusText.textContent = 'Connected';
+                } else {
+                    statusEl.className = 'status-indicator status-failed';
+                    statusText.textContent = 'Disconnected';
+                }
+            }
+
+            handleMessage(message) {
+                this.updateCounter++;
+                document.getElementById('updates-count').textContent = this.updateCounter;
+                
+                switch (message.type) {
+                    case 'stats_update':
+                        this.updateStats(message.data);
+                        break;
+                    case 'worker_connected':
+                        this.addActivityItem(`Worker ${message.data.id.slice(0, 8)} connected (${message.data.job_type})`, 'info');
+                        break;
+                    case 'worker_disconnected':
+                        this.addActivityItem(`Worker ${message.data.workerId.slice(0, 8)} disconnected`, 'warning');
+                        break;
+                    case 'job_enqueued':
+                        this.addActivityItem(`Job ${message.data.uuid.slice(0, 8)} enqueued (${message.data.job_type})`, 'info');
+                        break;
+                    case 'job_dispatched':
+                        this.addActivityItem(`Job ${message.data.jobUuid.slice(0, 8)} dispatched to worker ${message.data.workerId.slice(0, 8)}`, 'info');
+                        break;
+                    case 'job_completed':
+                        const status = message.data.status === '200' ? 'completed' : 'failed';
+                        this.addActivityItem(`Job ${message.data.jobUuid.slice(0, 8)} ${status}`, status === 'completed' ? 'success' : 'error');
+                        break;
+                }
+            }
+
+            updateStats(stats) {
+                // Update worker stats
+                document.getElementById('workers-total').textContent = stats.workers.total;
+                document.getElementById('workers-ready').textContent = stats.workers.ready;
+                document.getElementById('workers-busy').textContent = stats.workers.busy;
+
+                // Update job stats
+                document.getElementById('jobs-total').textContent = stats.jobs.total;
+                document.getElementById('jobs-queued').textContent = stats.jobs.queued;
+                document.getElementById('jobs-processing').textContent = stats.jobs.processing;
+                document.getElementById('jobs-completed').textContent = stats.jobs.completed;
+                document.getElementById('jobs-failed').textContent = stats.jobs.failed;
+
+                // Calculate and update success rate
+                const totalCompleted = stats.jobs.completed + stats.jobs.failed;
+                const successRate = totalCompleted > 0 ? Math.round((stats.jobs.completed / totalCompleted) * 100) : 100;
+                document.getElementById('success-rate').textContent = `${successRate}%`;
+
+                // Update uptime
+                const uptimeMinutes = Math.floor(stats.uptime / 60000);
+                const uptimeHours = Math.floor(uptimeMinutes / 60);
+                const uptimeDisplay = uptimeHours > 0 
+                    ? `${uptimeHours}h ${uptimeMinutes % 60}m`
+                    : `${uptimeMinutes}m`;
+                document.getElementById('uptime').textContent = `Uptime: ${uptimeDisplay}`;
+
+                // Update last update time
+                const now = new Date();
+                document.getElementById('last-update').textContent = `Last update: ${now.toLocaleTimeString()}`;
+
+                // Update worker types
+                this.updateWorkerTypes(stats.workers.byType);
+            }
+
+            updateWorkerTypes(workersByType) {
+                const container = document.getElementById('worker-types');
+                
+                if (Object.keys(workersByType).length === 0) {
+                    container.innerHTML = '<div class="text-gray-500 text-center py-4">No workers connected</div>';
+                    return;
+                }
+
+                const html = Object.entries(workersByType).map(([type, count]) => `
+                    <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                        <span class="font-medium text-gray-700">${type}</span>
+                        <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm font-semibold">${count}</span>
+                    </div>
+                `).join('');
+
+                container.innerHTML = html;
+            }
+
+            addActivityItem(message, type = 'info') {
+                const timestamp = new Date().toLocaleTimeString();
+                const colors = {
+                    info: 'text-blue-600 bg-blue-50 border-blue-200',
+                    success: 'text-green-600 bg-green-50 border-green-200',
+                    warning: 'text-yellow-600 bg-yellow-50 border-yellow-200',
+                    error: 'text-red-600 bg-red-50 border-red-200'
+                };
+
+                this.activityLog.unshift({ message, timestamp, type });
+                
+                // Keep only the most recent items
+                if (this.activityLog.length > this.maxActivityItems) {
+                    this.activityLog = this.activityLog.slice(0, this.maxActivityItems);
+                }
+
+                this.renderActivityLog();
+            }
+
+            renderActivityLog() {
+                const container = document.getElementById('activity-log');
+                
+                if (this.activityLog.length === 0) {
+                    container.innerHTML = '<div class="text-gray-500 text-center py-4">No recent activity</div>';
+                    return;
+                }
+
+                const colors = {
+                    info: 'text-blue-600 bg-blue-50 border-blue-200',
+                    success: 'text-green-600 bg-green-50 border-green-200',
+                    warning: 'text-yellow-600 bg-yellow-50 border-yellow-200',
+                    error: 'text-red-600 bg-red-50 border-red-200'
+                };
+
+                const html = this.activityLog.map(item => `
+                    <div class="flex justify-between items-start p-2 border-l-4 ${colors[item.type]} rounded-r-lg fade-in">
+                        <span class="text-sm">${item.message}</span>
+                        <span class="text-xs text-gray-500 ml-2 whitespace-nowrap">${item.timestamp}</span>
+                    </div>
+                `).join('');
+
+                container.innerHTML = html;
+            }
+
+            setupEventHandlers() {
+                // Add any additional event handlers here
+            }
+        }
+
+        // Initialize the dashboard when the DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            new DashboardApp();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "name": "with_dash_ui",
+  "version": "1.0.0",
+  "description": "BreezeQ Job Queue System with Real-time Dashboard",
+  "main": "broker_with_dashboard.ts",
+  "type": "module",
+  "scripts": {
+    "start": "tsx run_all.ts",
+    "broker": "tsx broker_with_dashboard.ts",
+    "workers:math": "JOB_TYPE=math WORKER_COUNT=3 tsx workers.ts",
+    "workers:data": "JOB_TYPE=data-processing WORKER_COUNT=3 tsx workers.ts",
+    "workers:image": "JOB_TYPE=image-resize WORKER_COUNT=3 tsx workers.ts",
+    "client": "tsx client.ts",
+    "dev": "tsx run_all.ts"
+  },
+  "keywords": ["job-queue", "zeromq", "dashboard", "multi-worker"],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.13.1",
+  "dependencies": {
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.52.0"
+  },
+  "devDependencies": {
+    "tsx": "4.20.3"
+  }
+}

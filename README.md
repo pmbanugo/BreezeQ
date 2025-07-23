@@ -132,6 +132,30 @@ This is what you'd get when you run the sample code:
 
 ![QUick start sample's runtime log](https://cdn.hashnode.com/res/hashnode/image/upload/v1753184076387/92192192-024a-4809-9aaa-8f009887afe8.png)
 
+## Try the Complete Dashboard Example
+
+For a more comprehensive experience, check out our **dashboard example** that showcases all BreezeQ features with a real-time web interface. Instead of manually writing all the code above, simply clone the repository and run the complete example:
+
+```bash
+git clone https://github.com/pmbanugo/BreezeQ.git
+cd BreezeQ
+pnpm install
+cd src/examples/with_dash_ui
+pnpm install
+pnpm start
+```
+
+This will start:
+
+- A broker with real-time dashboard at http://localhost:3000
+- Multiple workers processing different job types (math, data processing, image operations)
+- A demo client continuously submitting jobs
+- Live monitoring of queue status, worker health, and job completion rates
+
+![BreezeQ sample with a dashboard showing what's happening within the system](https://cdn.hashnode.com/res/hashnode/image/upload/v1753293660532/defd5f0d-9776-4c66-93ba-b9bc1873b5a0.gif)
+
+The dashboard example demonstrates production-ready patterns including error handling, graceful shutdowns, configurable workers, and comprehensive monitoring - making it easier to understand how BreezeQ works in a real application.
+
 ## Architecture
 
 BreezeQ follows a broker-worker pattern with three main components:
