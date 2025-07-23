@@ -11,7 +11,7 @@
 
 - Uses Node.js version 24 and targets ES2024
 - **ZeroMQ**: Uses `zeromq` library for ZeroMQ messaging. If you need more `zeromq` library type information, You can look at the github repository at [the url](https://github.com/zeromq/zeromq.js) or the documentation at the [website url](https://zeromq.github.io/zeromq.js/).
-- **Protocol**: implementing a job queue system based on a custom zeromq protocol which evolved from Majordomo protocol (MDP). See my JQP protocol specification in the file specification-rfc/ZeroMQ-based-Job-Queue-System-Protocol.md.
+- **Protocol**: implementing a job queue system based on a custom zeromq protocol called Job Queue Protocol (JQP). See my JQP protocol specification in the file `specification-rfc/ZeroMQ-based-Job-Queue-System-Protocol.md`.
 - **Examples**: `src/examples/` contains various examples of how to use the program either as a client or a worker, or all together verifying the full system by simple integration samples.
 - **Tests**: when needed, tests files should be placed beside the implementation files, following the same directory structure. use `node:test` and Node.js test runner.
 
