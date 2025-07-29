@@ -161,10 +161,14 @@ export class RedisPersistence implements PersistenceBase {
     const results = await pipeline.exec();
     const jobs: Job[] = [];
 
-    for (const [err, jobData] of results) {
-        if (!err && jobData) {
-            const job: Job = JSON.parse(jobData);
-            jobs.push(job);
+    for (const result of results) {
+        if (result[0] === null && result[1]) { // Check for no error and valid data
+            const jobData = JSON.parse(result[1]);
+            jobs.push({
+                ...jobData,
+                created_at: new Date(jobData.created_at),
+                updated_at: new Date(jobData.updated_at),
+            });
         }
     }
     return jobs;
