@@ -123,11 +123,25 @@ export class RedisPersistence implements PersistenceBase {
 
   async getQueuedJobs(job_type: string): Promise<Job[]> {
     const jobIds = await this.client.zRange(this.queuedJobsKey(job_type), 0, -1);
-    const jobs: Job[] = [];
+    if (jobIds.length === 0) {
+        return [];
+    }
+
+    const pipeline = this.client.multi();
     for (const jobId of jobIds) {
-        const job = await this.get(jobId);
-        if (job) {
-            jobs.push(job);
+        pipeline.hGet(this.jobKey(jobId), "data");
+    }
+
+    const results = await pipeline.exec();
+    const jobs: Job[] = [];
+    for (const [index, result] of results.entries()) {
+        if (result[0] === null && result[1]) { // Check for no error and valid data
+            const jobData = JSON.parse(result[1]);
+            jobs.push({
+                ...jobData,
+                created_at: new Date(jobData.created_at),
+                updated_at: new Date(jobData.updated_at),
+            });
         }
     }
     return jobs;
