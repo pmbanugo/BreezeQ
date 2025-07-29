@@ -135,10 +135,21 @@ export class RedisPersistence implements PersistenceBase {
 
   async getProcessingJobs(): Promise<Job[]> {
     const jobIds = await this.client.sMembers(this.processingJobsKey());
-    const jobs: Job[] = [];
+    if (jobIds.length === 0) {
+        return [];
+    }
+
+    const pipeline = this.client.multi();
     for (const jobId of jobIds) {
-        const job = await this.get(jobId);
-        if (job) {
+        pipeline.hGet(this.jobKey(jobId), "data");
+    }
+
+    const results = await pipeline.exec();
+    const jobs: Job[] = [];
+
+    for (const [err, jobData] of results) {
+        if (!err && jobData) {
+            const job: Job = JSON.parse(jobData);
             jobs.push(job);
         }
     }
