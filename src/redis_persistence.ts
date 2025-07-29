@@ -214,7 +214,9 @@ export class RedisPersistence implements PersistenceBase {
     let failed = 0;
 
     const jobKeys = uuids.map(uuid => this.jobKey(uuid));
-    const jobDataList = await this.client.mGet(jobKeys);
+    const pipeline = this.client.multi();
+    jobKeys.forEach(key => pipeline.hGet(key, "data"));
+    const jobDataList = await pipeline.exec();
 
     for (let i = 0; i < uuids.length; i++) {
         const uuid = uuids[i];
